@@ -1,4 +1,5 @@
 //  Copyright (c) 2011-present, Facebook, Inc.  All rights reserved.
+//  Copyright (c) 2024 Kioxia Corporation.  All rights reserved.
 //  This source code is licensed under both the GPLv2 (found in the
 //  COPYING file in the root directory) and Apache 2.0 License
 //  (found in the LICENSE.Apache file in the root directory).
@@ -127,7 +128,7 @@ inline bool BlockFetcher::TryGetCompressedBlockFromPersistentCache() {
   return false;
 }
 
-inline void BlockFetcher::PrepareBufferForBlockFromFile() {
+inline void BlockFetcher::PrepareBufferForBlockFromFile(bool is_data_block) {
   // cache miss read from device
   if (do_uncompress_ &&
       block_size_ + kBlockTrailerSize < kDefaultStackBufferSize) {
@@ -138,9 +139,13 @@ inline void BlockFetcher::PrepareBufferForBlockFromFile() {
     compressed_buf_ = AllocateBlock(block_size_ + kBlockTrailerSize,
                                     memory_allocator_compressed_);
     used_buf_ = compressed_buf_.get();
-  } else {
+  } else if (is_data_block) {
     heap_buf_ =
         AllocateBlock(block_size_ + kBlockTrailerSize, memory_allocator_);
+    used_buf_ = heap_buf_.get();
+  } else {
+    heap_buf_ =
+        AllocateBlock(block_size_ + kBlockTrailerSize, nullptr);
     used_buf_ = heap_buf_.get();
   }
 }
@@ -167,7 +172,7 @@ inline void BlockFetcher::InsertUncompressedBlockToPersistentCacheIfNeeded() {
 
 inline void BlockFetcher::CopyBufferToHeap() {
   assert(used_buf_ != heap_buf_.get());
-  heap_buf_ = AllocateBlock(block_size_ + kBlockTrailerSize, memory_allocator_);
+  heap_buf_ = AllocateBlock(block_size_ + kBlockTrailerSize, nullptr);
   memcpy(heap_buf_.get(), used_buf_, block_size_ + kBlockTrailerSize);
 }
 
@@ -195,7 +200,7 @@ inline void BlockFetcher::GetBlockContents() {
 #endif
 }
 
-Status BlockFetcher::ReadBlockContents() {
+Status BlockFetcher::ReadBlockContents(bool is_data_block) {
   block_size_ = static_cast<size_t>(handle_.size());
 
   if (TryGetUncompressBlockFromPersistentCache()) {
@@ -210,14 +215,17 @@ Status BlockFetcher::ReadBlockContents() {
       return status_;
     }
   } else if (!TryGetCompressedBlockFromPersistentCache()) {
-    PrepareBufferForBlockFromFile();
+    PrepareBufferForBlockFromFile(is_data_block);
     Status s;
 
     {
       PERF_TIMER_GUARD(block_read_time);
       // Actual file read
+      // if memory_allocator_ is not null, consider it a CXLMemoryAllocator
+      // and directly read data blocks (but not other blocks) without buffer copy
+      bool direct_read = memory_allocator_ && is_data_block;
       status_ = file_->Read(handle_.offset(), block_size_ + kBlockTrailerSize,
-                            &slice_, used_buf_);
+                            &slice_, used_buf_, direct_read);
     }
     PERF_COUNTER_ADD(block_read_count, 1);
     PERF_COUNTER_ADD(block_read_byte, block_size_ + kBlockTrailerSize);
@@ -243,7 +251,7 @@ Status BlockFetcher::ReadBlockContents() {
 
   PERF_TIMER_GUARD(block_decompress_time);
 
-  compression_type_ = get_block_compression_type(slice_.data(), block_size_);
+  compression_type_ = is_data_block ? kNoCompression : get_block_compression_type(slice_.data(), block_size_);
 
   if (do_uncompress_ && compression_type_ != kNoCompression) {
     // compressed page, uncompress, update cache

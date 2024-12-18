@@ -1,4 +1,5 @@
 //  Copyright (c) 2011-present, Facebook, Inc.  All rights reserved.
+//  Copyright (c) 2024 Kioxia Corporation.  All rights reserved.
 //  This source code is licensed under both the GPLv2 (found in the
 //  COPYING file in the root directory) and Apache 2.0 License
 //  (found in the LICENSE.Apache file in the root directory).
@@ -1350,7 +1351,10 @@ ColumnFamilyHandle* DBImpl::DefaultColumnFamily() const {
 Status DBImpl::Get(const ReadOptions& read_options,
                    ColumnFamilyHandle* column_family, const Slice& key,
                    PinnableSlice* value) {
-  return GetImpl(read_options, column_family, key, value);
+  photon::record_checkpoint(photon::GET_BEGIN);
+  Status s = GetImpl(read_options, column_family, key, value);
+  photon::record_checkpoint(photon::GET_END);
+  return s;
 }
 
 Status DBImpl::GetImpl(const ReadOptions& read_options,

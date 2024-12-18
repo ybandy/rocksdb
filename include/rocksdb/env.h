@@ -1,4 +1,5 @@
 // Copyright (c) 2011-present, Facebook, Inc.  All rights reserved.
+//  Copyright (c) 2024 Kioxia Corporation.  All rights reserved.
 //  This source code is licensed under both the GPLv2 (found in the
 //  COPYING file in the root directory) and Apache 2.0 License
 //  (found in the LICENSE.Apache file in the root directory).
@@ -572,6 +573,9 @@ class RandomAccessFile {
   // If Direct I/O enabled, offset, n, and scratch should be aligned properly.
   virtual Status Read(uint64_t offset, size_t n, Slice* result,
                       char* scratch) const = 0;
+
+  virtual Status PolledRead(uint64_t offset, size_t n, Slice* result,
+                            char* scratch) const { return Status(); };
 
   // Readahead the file starting from offset by n bytes for caching.
   virtual Status Prefetch(uint64_t /*offset*/, size_t /*n*/) {
@@ -1460,7 +1464,7 @@ public:
     static PhotonEnv& Singleton() {
         // 8 vCPU. Hardcoded for now.
 #ifdef PHOTON_ENABLE_URING
-        static PhotonEnv instance(8, photon::INIT_EVENT_IOURING);
+        static PhotonEnv instance(1, photon::INIT_EVENT_IOURING);
 #else
         static PhotonEnv instance(8, photon::INIT_EVENT_EPOLL);
 #endif

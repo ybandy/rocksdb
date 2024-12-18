@@ -139,6 +139,7 @@ LIB_SOURCES =                                                   \
   util/concurrent_arena.cc                                      \
   util/concurrent_task_limiter_impl.cc                          \
   util/crc32c.cc                                                \
+  util/cxl_memory_allocator.cc                                  \
   util/delete_scheduler.cc                                      \
   util/dynamic_bloom.cc                                         \
   util/event_logger.cc                                          \

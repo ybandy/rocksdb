@@ -1,4 +1,5 @@
 //  Copyright (c) 2011-present, Facebook, Inc.  All rights reserved.
+//  Copyright (c) 2024 Kioxia Corporation.  All rights reserved.
 //  This source code is licensed under both the GPLv2 (found in the
 //  COPYING file in the root directory) and Apache 2.0 License
 //  (found in the LICENSE.Apache file in the root directory).
@@ -43,7 +44,7 @@ class BlockFetcher {
         cache_options_(cache_options),
         memory_allocator_(memory_allocator),
         memory_allocator_compressed_(memory_allocator_compressed) {}
-  Status ReadBlockContents();
+  Status ReadBlockContents(bool is_data_block = false);
   CompressionType get_compression_type() const { return compression_type_; }
 
  private:
@@ -77,7 +78,7 @@ class BlockFetcher {
   // return true if found
   bool TryGetFromPrefetchBuffer();
   bool TryGetCompressedBlockFromPersistentCache();
-  void PrepareBufferForBlockFromFile();
+  void PrepareBufferForBlockFromFile(bool is_data_block);
   // Copy content from used_buf_ to new heap buffer.
   void CopyBufferToHeap();
   void GetBlockContents();

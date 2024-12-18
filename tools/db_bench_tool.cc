@@ -1,4 +1,5 @@
 //  Copyright (c) 2011-present, Facebook, Inc.  All rights reserved.
+//  Copyright (c) 2024 Kioxia Corporation.  All rights reserved.
 //  This source code is licensed under both the GPLv2 (found in the
 //  COPYING file in the root directory) and Apache 2.0 License
 //  (found in the LICENSE.Apache file in the root directory).
@@ -63,6 +64,7 @@
 #include "util/cast_util.h"
 #include "util/compression.h"
 #include "util/crc32c.h"
+#include "util/cxl_memory_allocator.h"
 #include "util/gflags_compat.h"
 #include "util/mutexlock.h"
 #include "util/random.h"
@@ -71,6 +73,7 @@
 #include "util/testutil.h"
 #include "util/transaction_test_util.h"
 #include "util/xxhash.h"
+#include "util/zipf.h"
 #include "utilities/blob_db/blob_db.h"
 #include "utilities/merge_operators.h"
 #include "utilities/merge_operators/bytesxor.h"
@@ -195,6 +198,14 @@ DEFINE_string(
     "\theapprofile -- Dump a heap profile (if supported by this port)\n"
     "\treplay      -- replay the trace file specified with trace_file\n");
 
+DEFINE_int32(use_cxl_memory_for_block_cache, 0,
+            "When nonzero, allocate block cache from CXL memory "
+            "by interpreting this number as a NUMA node mask");
+
+DEFINE_int32(cxl_memory_latency, 0, "CXL memory latency in nanoseconds");
+
+DEFINE_string(cxl_set_latency_path, "", "Path to a script for setting CXL latency");
+
 DEFINE_int64(num, 1000000, "Number of key/values to place in database");
 
 DEFINE_int64(numdistinct, 1000,
@@ -284,6 +295,11 @@ DEFINE_double(read_random_exp_range, 0.0,
               "Read random's key will be generated using distribution of "
               "num * exp(-r) where r is uniform number from 0 to this value. "
               "The larger the number is, the more skewed the reads are. "
+              "Only used in readrandom and multireadrandom benchmarks.");
+
+DEFINE_double(read_random_zipf_exponent, 0.0,
+              "Read random's key will be generated using Zipf distribution "
+              "with this exponent. "
               "Only used in readrandom and multireadrandom benchmarks.");
 
 DEFINE_bool(histogram, false, "Print histogram of operation timings");
@@ -762,6 +778,8 @@ DEFINE_bool(use_stderr_info_logger, false,
 
 DEFINE_string(trace_file, "", "Trace workload to a file. ");
 
+DEFINE_string(checkpoint_trace_file, "", "Checkpoint Trace dump file.");
+
 static enum rocksdb::CompressionType StringToCompressionType(const char* ctype) {
   assert(ctype);
 
@@ -1188,6 +1206,30 @@ static const bool FLAGS_deletepercent_dummy __attribute__((__unused__)) =
 static const bool FLAGS_table_cache_numshardbits_dummy __attribute__((__unused__)) =
     RegisterFlagValidator(&FLAGS_table_cache_numshardbits,
                           &ValidateTableCacheNumshardbits);
+
+
+static void set_latency(int latency)
+{
+    char cmd[1024];
+    snprintf(cmd, sizeof(cmd), "bash %s %d", FLAGS_cxl_set_latency_path.c_str(), latency);
+    fprintf(stderr, "%s\n", cmd);
+
+    FILE *p;
+    char buf[1024];
+    int ret = 1;
+    if((p = popen(cmd, "r")) != NULL)
+    {
+        while(fgets(buf, 1024, p) != NULL) fprintf(stderr, "%s", buf);
+        ret = pclose(p);
+    }
+    if(ret)
+    {
+        fprintf(stderr, "failed to execute '%s'\n", cmd);
+        exit(1);
+    }
+    sleep(1);
+}
+
 
 namespace rocksdb {
 
@@ -1773,6 +1815,8 @@ class Stats {
           if (id_ == 0 && FLAGS_stats_per_interval) {
             std::string stats;
 
+            //photon::checkpoint_trace_reset();
+
             if (db_with_cfh && db_with_cfh->num_created.load()) {
               for (size_t i = 0; i < db_with_cfh->num_created.load(); ++i) {
                 if (db->GetProperty(db_with_cfh->cfh[i], "rocksdb.cfstats",
@@ -2057,6 +2101,8 @@ class Benchmark {
   int64_t reads_;
   int64_t deletes_;
   double read_random_exp_range_;
+  double read_random_zipf_exponent_;
+  Zipfian* zipf_;
   int64_t writes_;
   int64_t readwrites_;
   int64_t merge_keys_;
@@ -2362,9 +2408,18 @@ class Benchmark {
       }
       return cache;
     } else {
+      std::shared_ptr<MemoryAllocator> allocator = nullptr;
+      if(FLAGS_use_cxl_memory_for_block_cache) {
+        set_latency(0);
+        allocator = std::make_shared<CXLMemoryAllocator>((size_t)capacity,
+                                                         FLAGS_block_size,
+                                                         (uint64_t)FLAGS_use_cxl_memory_for_block_cache);
+        set_latency(FLAGS_cxl_memory_latency);
+      }
       return NewLRUCache((size_t)capacity, FLAGS_cache_numshardbits,
-                         false /*strict_capacity_limit*/,
-                         FLAGS_cache_high_pri_pool_ratio);
+                         true /*strict_capacity_limit*/,
+                         FLAGS_cache_high_pri_pool_ratio,
+                         allocator);
     }
   }
 
@@ -2385,6 +2440,8 @@ class Benchmark {
         entries_per_batch_(1),
         reads_(FLAGS_reads < 0 ? FLAGS_num : FLAGS_reads),
         read_random_exp_range_(0.0),
+        read_random_zipf_exponent_(0.0),
+        zipf_(nullptr),
         writes_(FLAGS_writes < 0 ? FLAGS_num : FLAGS_writes),
         readwrites_(
             (FLAGS_writes < 0 && FLAGS_reads < 0)
@@ -2596,6 +2653,9 @@ void VerifyDBFromDB(std::string& truth_db_name) {
       max_num_range_tombstones_ = FLAGS_max_num_range_tombstones;
       write_options_ = WriteOptions();
       read_random_exp_range_ = FLAGS_read_random_exp_range;
+      read_random_zipf_exponent_ = FLAGS_read_random_zipf_exponent;
+      if(zipf_) delete zipf_;
+      zipf_ = new Zipfian(num_, read_random_zipf_exponent_);
       if (FLAGS_sync) {
         write_options_.sync = true;
       }
@@ -2918,6 +2978,14 @@ void VerifyDBFromDB(std::string& truth_db_name) {
               static_cast_with_check<SimCache, Cache>(cache_.get())
                   ->ToString()
                   .c_str());
+    }
+    if (FLAGS_checkpoint_trace_file != "") {
+        FILE* file = fopen(FLAGS_checkpoint_trace_file.c_str(), "w");
+        if (file)
+            photon::checkpoint_trace_dump(file);
+        else
+            fprintf(stderr, "failed to open checkpoint trace dump file %s\n",
+                    FLAGS_checkpoint_trace_file.c_str());
     }
   }
 
@@ -4509,8 +4577,12 @@ void VerifyDBFromDB(std::string& truth_db_name) {
   int64_t GetRandomKey(Random64* rand) {
     uint64_t rand_int = rand->Next();
     int64_t key_rand;
-    if (read_random_exp_range_ == 0) {
+    if (read_random_exp_range_ == 0 && read_random_zipf_exponent_ == 0) {
       key_rand = rand_int % FLAGS_num;
+    } else if(read_random_zipf_exponent_ > 0) {
+      uint64_t rand_num = zipf_->get((double)rand_int / std::numeric_limits<std::mt19937_64::result_type>::max());
+      const uint64_t kBigPrime = 0x5bd1e995;
+      key_rand = static_cast<int64_t>((rand_num * kBigPrime) % FLAGS_num);
     } else {
       const uint64_t kBigInt = static_cast<uint64_t>(1U) << 62;
       long double order = -static_cast<long double>(rand_int % kBigInt) /
@@ -5358,11 +5430,21 @@ void VerifyDBFromDB(std::string& truth_db_name) {
     // the number of iterations is the larger of read_ or write_
     while (!duration.Done(1)) {
       DB* db = SelectDB(thread);
-      GenerateKeyFromInt(thread->rand.Next() % FLAGS_num, FLAGS_num, &key);
-      if (get_weight == 0 && put_weight == 0) {
-        // one batch completed, reinitialize for next batch
-        get_weight = FLAGS_readwritepercent;
-        put_weight = 100 - get_weight;
+      //GenerateKeyFromInt(thread->rand.Next() % FLAGS_num, FLAGS_num, &key); // uniform random only
+      int64_t key_rand = GetRandomKey(&thread->rand); // can generate skewed distribution
+      GenerateKeyFromInt(key_rand, FLAGS_num, &key);
+      //if (get_weight == 0 && put_weight == 0) {
+      //  // one batch completed, reinitialize for next batch
+      //  get_weight = FLAGS_readwritepercent;
+      //  put_weight = 100 - get_weight;
+      //}
+      if(thread->rand.Uniform(100) < (uint64_t)FLAGS_readwritepercent) { // finer mix of reads and writes
+        get_weight = 1;
+        put_weight = 0;
+      }
+      else {
+        get_weight = 0;
+        put_weight = 1;
       }
       if (get_weight > 0) {
         // do all the gets first
@@ -5387,7 +5469,8 @@ void VerifyDBFromDB(std::string& truth_db_name) {
         }
         put_weight--;
         writes_done++;
-        thread->stats.FinishedOps(nullptr, db, 1, kWrite);
+        //thread->stats.FinishedOps(nullptr, db, 1, kWrite);
+        thread->stats.FinishedOps(nullptr, db, 1, kRead); // measure operation latency irrespective of the op type
       }
     }
     char msg[100];

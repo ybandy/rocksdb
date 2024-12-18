@@ -1,4 +1,5 @@
 //  Copyright (c) 2011-present, Facebook, Inc.  All rights reserved.
+//  Copyright (c) 2024 Kioxia Corporation.  All rights reserved.
 //  This source code is licensed under both the GPLv2 (found in the
 //  COPYING file in the root directory) and Apache 2.0 License
 //  (found in the LICENSE.Apache file in the root directory).
@@ -333,7 +334,7 @@ class BlockIter : public InternalIteratorBase<TValue> {
 
   template <typename DecodeKeyFunc>
   inline bool BinarySeek(const Slice& target, uint32_t left, uint32_t right,
-                         uint32_t* index, const Comparator* comp);
+                         uint32_t* index, const Comparator* comp, bool do_prefetch = false);
 };
 
 class DataBlockIter final : public BlockIter<Slice> {

@@ -1,4 +1,5 @@
 //  Copyright (c) 2011-present, Facebook, Inc.  All rights reserved.
+//  Copyright (c) 2024 Kioxia Corporation.  All rights reserved.
 //  This source code is licensed under both the GPLv2 (found in the
 //  COPYING file in the root directory) and Apache 2.0 License
 //  (found in the LICENSE.Apache file in the root directory).
@@ -49,6 +50,9 @@ ssize_t photon_write(int fd, const void* buf, size_t count) {
 }
 ssize_t photon_pread(int fd, void* buf, size_t count, off_t offset) {
     return photon::iouring_pread(fd, buf, count, offset);
+}
+ssize_t photon_pread_iopoll(int fd, void* buf, size_t count, off_t offset) {
+    return photon::iouring_pread_iopoll(fd, buf, count, offset);
 }
 ssize_t photon_pwrite(int fd, const void* buf, size_t count, off_t offset) {
     return photon::iouring_pwrite(fd, buf, count, offset);
@@ -373,6 +377,42 @@ Status PosixRandomAccessFile::Read(uint64_t offset, size_t n, Slice* result,
   char* ptr = scratch;
   while (left > 0) {
     r = photon_pread(fd_, ptr, left, offset);
+    if (r <= 0) {
+      break;
+    }
+    ptr += r;
+    offset += r;
+    left -= r;
+    if (use_direct_io() &&
+        r % static_cast<ssize_t>(GetRequiredBufferAlignment()) != 0) {
+      // Bytes reads don't fill sectors. Should only happen at the end
+      // of the file.
+      break;
+    }
+  }
+  if (r < 0) {
+    // An error: return a non-ok status
+    s = IOError(
+        "While pread offset " + ToString(offset) + " len " + ToString(n),
+        filename_, errno);
+  }
+  *result = Slice(scratch, (r < 0) ? 0 : n - left);
+  return s;
+}
+
+Status PosixRandomAccessFile::PolledRead(uint64_t offset, size_t n, Slice* result,
+                                         char* scratch) const {
+  if (use_direct_io()) {
+    assert(IsSectorAligned(offset, GetRequiredBufferAlignment()));
+    assert(IsSectorAligned(n, GetRequiredBufferAlignment()));
+    assert(IsSectorAligned(scratch, GetRequiredBufferAlignment()));
+  }
+  Status s;
+  ssize_t r = -1;
+  size_t left = n;
+  char* ptr = scratch;
+  while (left > 0) {
+    r = photon_pread_iopoll(fd_, ptr, left, offset);
     if (r <= 0) {
       break;
     }

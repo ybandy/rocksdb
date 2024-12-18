@@ -48,14 +48,19 @@ include(FetchContent)
 set(PHOTON_ENABLE_URING OFF CACHE INTERNAL "Enable iouring")
 FetchContent_Declare(
         photon
-        GIT_REPOSITORY https://github.com/alibaba/PhotonLibOS.git
-        GIT_TAG release/0.8
+        GIT_REPOSITORY https://github.com/ybandy/PhotonLibOS.git
+        GIT_TAG cxlkvs_v1.0
 )
 FetchContent_MakeAvailable(photon)
 set(PHOTON_INCLUDE_DIR ${photon_SOURCE_DIR}/include/)
 
 if (PHOTON_ENABLE_URING)
     add_compile_definitions("PHOTON_ENABLE_URING")
+endif ()
+
+set(ENABLE_PREFETCH OFF CACHE INTERNAL "Enable prefetch")
+if (ENABLE_PREFETCH)
+    add_definitions(-DENABLE_PREFETCH)
 endif ()
 
 option(INIT_PHOTON_IN_ENV "INIT PHOTON IN ROCKSDB" OFF)
@@ -625,6 +630,7 @@ set(SOURCES
         util/concurrent_arena.cc
         util/concurrent_task_limiter_impl.cc
         util/crc32c.cc
+        util/cxl_memory_allocator.cc
         util/delete_scheduler.cc
         util/dynamic_bloom.cc
         util/event_logger.cc

@@ -1,4 +1,5 @@
 //  Copyright (c) 2011-present, Facebook, Inc.  All rights reserved.
+//  Copyright (c) 2024 Kioxia Corporation.  All rights reserved.
 //  This source code is licensed under both the GPLv2 (found in the
 //  COPYING file in the root directory) and Apache 2.0 License
 //  (found in the LICENSE.Apache file in the root directory).
@@ -70,7 +71,7 @@ Status SequentialFileReader::Skip(uint64_t n) {
 }
 
 Status RandomAccessFileReader::Read(uint64_t offset, size_t n, Slice* result,
-                                    char* scratch) const {
+                                    char* scratch, bool direct_read) const {
   Status s;
   uint64_t elapsed = 0;
   {
@@ -79,7 +80,7 @@ Status RandomAccessFileReader::Read(uint64_t offset, size_t n, Slice* result,
                 true /*delay_enabled*/);
     auto prev_perf_level = GetPerfLevel();
     IOSTATS_TIMER_GUARD(read_nanos);
-    if (use_direct_io()) {
+    if (use_direct_io() && !direct_read) {
 #ifndef ROCKSDB_LITE
       size_t alignment = file_->GetRequiredBufferAlignment();
       size_t aligned_offset = TruncateToPageBoundary(alignment, static_cast<size_t>(offset));
@@ -128,6 +129,12 @@ Status RandomAccessFileReader::Read(uint64_t offset, size_t n, Slice* result,
                            std::min(buf.CurrentSize() - offset_advance, n));
       }
       *result = Slice(scratch, res_len);
+    } else if (use_direct_io() && direct_read) {
+      size_t alignment = file_->GetRequiredBufferAlignment();
+      size_t read_size = Roundup(n, alignment);
+      Slice tmp;
+      s = file_->PolledRead(offset, read_size, &tmp, scratch);
+      *result = Slice(scratch, n);
 #endif  // !ROCKSDB_LITE
     } else {
       size_t pos = 0;

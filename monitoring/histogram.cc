@@ -1,4 +1,5 @@
 //  Copyright (c) 2011-present, Facebook, Inc.  All rights reserved.
+//  Copyright (c) 2024 Kioxia Corporation.  All rights reserved.
 //  This source code is licensed under both the GPLv2 (found in the
 //  COPYING file in the root directory) and Apache 2.0 License
 //  (found in the LICENSE.Apache file in the root directory).
@@ -197,8 +198,8 @@ std::string HistogramStat::ToString() const {
   r.append(buf);
   snprintf(buf, sizeof(buf),
            "Percentiles: "
-           "P50: %.2f P75: %.2f P99: %.2f P99.9: %.2f P99.99: %.2f\n",
-           Percentile(50), Percentile(75), Percentile(99), Percentile(99.9),
+           "P50: %.2f P75: %.2f P90: %.2f P99: %.2f P99.9: %.2f P99.99: %.2f\n",
+           Percentile(50), Percentile(75), Percentile(90), Percentile(99), Percentile(99.9),
            Percentile(99.99));
   r.append(buf);
   r.append("------------------------------------------------------\n");

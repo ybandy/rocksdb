@@ -1,4 +1,5 @@
 //  Copyright (c) 2011-present, Facebook, Inc.  All rights reserved.
+//  Copyright (c) 2024 Kioxia Corporation.  All rights reserved.
 //  This source code is licensed under both the GPLv2 (found in the
 //  COPYING file in the root directory) and Apache 2.0 License
 //  (found in the LICENSE.Apache file in the root directory).
@@ -1515,6 +1516,15 @@ Status BlockBasedTable::PutDataBlockToCache(
                                     seq_no, read_amp_bytes_per_bit,
                                     statistics);  // uncompressed block
   } else {
+#ifdef ENABLE_PREFETCH
+    {
+      photon::record_checkpoint(photon::PREFETCH_FOR_PUT_DATA_BLOCK_BEGIN);
+      const char *p = raw_block_contents->data.data() + raw_block_contents->data.size() - 12;
+      __builtin_prefetch(p);
+      photon::record_checkpoint(photon::PREFETCH_FOR_PUT_DATA_BLOCK_END);
+      photon::thread_yield();
+    }
+#endif
     cached_block->value =
         new Block(std::move(*raw_block_contents), seq_no,
                   read_amp_bytes_per_bit, ioptions.statistics);
@@ -2113,6 +2123,18 @@ Status BlockBasedTable::MaybeReadBlockAndLoadToCache(
                               rep, ro, block_entry, uncompression_dict,
                               rep->table_options.read_amp_bytes_per_bit,
                               is_index, get_context);
+#ifdef ENABLE_PREFETCH
+    {
+      Block *b = block_entry->value;
+      if (b != nullptr)
+      {
+        photon::record_checkpoint(photon::PREFETCH_FOR_CACHED_DATA_BLOCK_BEGIN);
+        __builtin_prefetch(b->data() + b->size() - 12);
+        photon::record_checkpoint(photon::PREFETCH_FOR_CACHED_DATA_BLOCK_END);
+        photon::thread_yield();
+      }
+    }
+#endif
 
     // Can't find the block from the cache. If I/O is allowed, read from the
     // file.
@@ -2131,7 +2153,7 @@ Status BlockBasedTable::MaybeReadBlockAndLoadToCache(
             uncompression_dict, rep->persistent_cache_options,
             GetMemoryAllocator(rep->table_options),
             GetMemoryAllocatorForCompressedBlock(rep->table_options));
-        s = block_fetcher.ReadBlockContents();
+        s = block_fetcher.ReadBlockContents(true);
         raw_block_comp_type = block_fetcher.get_compression_type();
       }
 

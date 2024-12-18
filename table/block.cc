@@ -1,4 +1,5 @@
 //  Copyright (c) 2011-present, Facebook, Inc.  All rights reserved.
+//  Copyright (c) 2024 Kioxia Corporation.  All rights reserved.
 //  This source code is licensed under both the GPLv2 (found in the
 //  COPYING file in the root directory) and Apache 2.0 License
 //  (found in the LICENSE.Apache file in the root directory).
@@ -247,7 +248,7 @@ void DataBlockIter::Seek(const Slice& target) {
   }
   uint32_t index = 0;
   bool ok = BinarySeek<DecodeKey>(seek_key, 0, num_restarts_ - 1, &index,
-                                  comparator_);
+                                  comparator_, true);
 
   if (!ok) {
     return;
@@ -509,6 +510,15 @@ bool DataBlockIter::ParseNextDataKey(const char* limit) {
   }
 
   // Decode next entry
+#ifdef ENABLE_PREFETCH
+  photon::record_checkpoint(photon::PREFETCH_FOR_DATA_BLOCK_ITER_NEXT_BEGIN);
+  __builtin_prefetch(p);
+  if((reinterpret_cast<uintptr_t>(p) & 0x3f) > 64 - 4 - 22) {
+    __builtin_prefetch(p + 64);
+  }
+  photon::record_checkpoint(photon::PREFETCH_FOR_DATA_BLOCK_ITER_NEXT_END);
+  photon::thread_yield();
+#endif
   uint32_t shared, non_shared, value_length;
   p = DecodeEntryFunc()(p, limit, &shared, &non_shared, &value_length);
   if (p == nullptr || key_.Size() < shared) {
@@ -654,12 +664,23 @@ template <class TValue>
 template <typename DecodeKeyFunc>
 bool BlockIter<TValue>::BinarySeek(const Slice& target, uint32_t left,
                                    uint32_t right, uint32_t* index,
-                                   const Comparator* comp) {
+                                   const Comparator* comp, bool do_prefetch) {
   assert(left <= right);
 
   while (left < right) {
     uint32_t mid = (left + right + 1) / 2;
     uint32_t region_offset = GetRestartPoint(mid);
+#ifdef ENABLE_PREFETCH
+    if(do_prefetch) {
+      photon::record_checkpoint(photon::PREFETCH_FOR_BLOCK_ITER_BINARY_SEEK_BEGIN);
+      __builtin_prefetch(data_ + region_offset);
+      if(((reinterpret_cast<uintptr_t>(data_) + region_offset) & 0x3f) > 64 - 4 - 28) {
+        __builtin_prefetch(data_ + region_offset + 64);
+      }
+      photon::record_checkpoint(photon::PREFETCH_FOR_BLOCK_ITER_BINARY_SEEK_END);
+      photon::thread_yield();
+    }
+#endif
     uint32_t shared, non_shared;
     const char* key_ptr = DecodeKeyFunc()(
         data_ + region_offset, data_ + restarts_, &shared, &non_shared);
