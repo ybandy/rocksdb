@@ -160,7 +160,7 @@ class CondVar {
   Mutex* mu_;
 };
 
-using Thread = std::thread;
+using Thread = photon_std::thread;
 
 static inline void AsmVolatilePause() {
 #if defined(__i386__) || defined(__x86_64__)

@@ -37,7 +37,7 @@ HistogramWindowingImpl::~HistogramWindowingImpl() {
 }
 
 void HistogramWindowingImpl::Clear() {
-  std::lock_guard<std::mutex> lock(mutex_);
+  photon_std::lock_guard<photon_std::mutex> lock(mutex_);
 
   stats_.Clear();
   for (size_t i = 0; i < num_windows_; i++) {
@@ -72,7 +72,7 @@ void HistogramWindowingImpl::Merge(const Histogram& other) {
 }
 
 void HistogramWindowingImpl::Merge(const HistogramWindowingImpl& other) {
-  std::lock_guard<std::mutex> lock(mutex_);
+  photon_std::lock_guard<photon_std::mutex> lock(mutex_);
   stats_.Merge(other.stats_);
 
   if (stats_.num_buckets_ != other.stats_.num_buckets_ ||

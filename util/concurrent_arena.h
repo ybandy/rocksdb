@@ -64,7 +64,7 @@ class ConcurrentArena : public Allocator {
   }
 
   size_t ApproximateMemoryUsage() const {
-    std::unique_lock<SpinMutex> lock(arena_mutex_, std::defer_lock);
+    photon_std::unique_lock<SpinMutex> lock(arena_mutex_, std::defer_lock);
     lock.lock();
     return arena_.ApproximateMemoryUsage() - ShardAllocatedAndUnused();
   }
@@ -133,7 +133,7 @@ class ConcurrentArena : public Allocator {
     // we've never needed to Repick() and the arena mutex is available
     // with no waiting.  This keeps the fragmentation penalty of
     // concurrency zero unless it might actually confer an advantage.
-    std::unique_lock<SpinMutex> arena_lock(arena_mutex_, std::defer_lock);
+    photon_std::unique_lock<SpinMutex> arena_lock(arena_mutex_, std::defer_lock);
     if (bytes > shard_block_size_ / 4 || force_arena ||
         ((cpu = *tls_cpuid) == 0 &&
          !shards_.AccessAtCore(0)->allocated_and_unused_.load(
@@ -153,12 +153,12 @@ class ConcurrentArena : public Allocator {
       s = Repick();
       s->mutex.lock();
     }
-    std::unique_lock<SpinMutex> lock(s->mutex, std::adopt_lock);
+    photon_std::unique_lock<SpinMutex> lock(s->mutex, std::adopt_lock);
 
     size_t avail = s->allocated_and_unused_.load(std::memory_order_relaxed);
     if (avail < bytes) {
       // reload
-      std::lock_guard<SpinMutex> reload_lock(arena_mutex_);
+      photon_std::lock_guard<SpinMutex> reload_lock(arena_mutex_);
 
       // If the arena's current block is within a factor of 2 of the right
       // size, we adjust our request to avoid arena waste.

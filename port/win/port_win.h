@@ -23,9 +23,9 @@
 #include <windows.h>
 #include <string>
 #include <string.h>
-#include <mutex>
+#include "port/port.h"
 #include <limits>
-#include <condition_variable>
+#include "port/port.h"
 #include <malloc.h>
 #include <intrin.h>
 
@@ -167,11 +167,11 @@ class Mutex {
 
   friend class CondVar;
 
-  std::mutex& getLock() {
+  photon_std::mutex& getLock() {
     return mutex_;
   }
 
-  std::mutex mutex_;
+  photon_std::mutex mutex_;
 #ifndef NDEBUG
   bool locked_;
 #endif
@@ -218,7 +218,7 @@ class CondVar {
   CondVar& operator=(CondVar&&) = delete;
 
  private:
-  std::condition_variable cv_;
+  photon_std::condition_variable cv_;
   Mutex* mu_;
 };
 

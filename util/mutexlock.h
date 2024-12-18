@@ -10,8 +10,8 @@
 #pragma once
 #include <assert.h>
 #include <atomic>
-#include <mutex>
-#include <thread>
+#include "port/port.h"
+#include "port/port.h"
 #include "port/port.h"
 
 namespace rocksdb {
@@ -95,7 +95,7 @@ class WriteLock {
 
 //
 // SpinMutex has very low overhead for low-contention cases.  Method names
-// are chosen so you can use std::unique_lock or std::lock_guard with it.
+// are chosen so you can use photon_std::unique_lock or photon_std::lock_guard with it.
 //
 class SpinMutexObsolete {
  public:
@@ -117,7 +117,7 @@ class SpinMutexObsolete {
       }
       port::AsmVolatilePause();
       if (tries > 100) {
-        std::this_thread::yield();
+        photon_std::this_thread::yield();
       }
     }
   }
@@ -128,6 +128,6 @@ class SpinMutexObsolete {
   std::atomic<bool> locked_;
 };
 
-using SpinMutex = std::mutex;
+using SpinMutex = photon_std::mutex;
 
 }  // namespace rocksdb

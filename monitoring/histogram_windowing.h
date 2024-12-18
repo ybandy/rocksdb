@@ -55,7 +55,7 @@ private:
   }
 
   Env* env_;
-  std::mutex mutex_;
+  photon_std::mutex mutex_;
 
   // Aggregated stats over windows_stats_, all the computation is done
   // upon aggregated values

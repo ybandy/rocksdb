@@ -9,7 +9,7 @@
 
 #include "rocksdb/env.h"
 
-#include <thread>
+#include "port/port.h"
 #include "options/db_options.h"
 #include "port/port.h"
 #include "port/sys_time.h"
@@ -39,8 +39,8 @@ std::string Env::PriorityToString(Env::Priority priority) {
 }
 
 uint64_t Env::GetThreadID() const {
-  std::hash<std::thread::id> hasher;
-  return hasher(std::this_thread::get_id());
+  std::hash<photon_std::thread::id> hasher;
+  return hasher(photon_std::this_thread::get_id());
 }
 
 Status Env::ReuseWritableFile(const std::string& fname,

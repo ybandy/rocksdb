@@ -8,9 +8,9 @@
 #include "utilities/transactions/transaction_db_mutex_impl.h"
 
 #include <chrono>
-#include <condition_variable>
+#include "port/port.h"
 #include <functional>
-#include <mutex>
+#include "port/port.h"
 
 #include "rocksdb/utilities/transaction_db_mutex.h"
 
@@ -30,7 +30,7 @@ class TransactionDBMutexImpl : public TransactionDBMutex {
   friend class TransactionDBCondVarImpl;
 
  private:
-  std::mutex mutex_;
+  photon_std::mutex mutex_;
 };
 
 class TransactionDBCondVarImpl : public TransactionDBCondVar {
@@ -48,7 +48,7 @@ class TransactionDBCondVarImpl : public TransactionDBCondVar {
   void NotifyAll() override { cv_.notify_all(); }
 
  private:
-  std::condition_variable cv_;
+  photon_std::condition_variable cv_;
 };
 
 std::shared_ptr<TransactionDBMutex>
@@ -95,7 +95,7 @@ Status TransactionDBCondVarImpl::Wait(
     std::shared_ptr<TransactionDBMutex> mutex) {
   auto mutex_impl = reinterpret_cast<TransactionDBMutexImpl*>(mutex.get());
 
-  std::unique_lock<std::mutex> lock(mutex_impl->mutex_, std::adopt_lock);
+  photon_std::unique_lock<photon_std::mutex> lock(mutex_impl->mutex_, std::adopt_lock);
   cv_.wait(lock);
 
   // Make sure unique_lock doesn't unlock mutex when it destructs
@@ -109,7 +109,7 @@ Status TransactionDBCondVarImpl::WaitFor(
   Status s;
 
   auto mutex_impl = reinterpret_cast<TransactionDBMutexImpl*>(mutex.get());
-  std::unique_lock<std::mutex> lock(mutex_impl->mutex_, std::adopt_lock);
+  photon_std::unique_lock<photon_std::mutex> lock(mutex_impl->mutex_, std::adopt_lock);
 
   if (timeout_time < 0) {
     // If timeout is negative, do not use a timeout

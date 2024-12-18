@@ -30,7 +30,7 @@
 #include <atomic>
 #include <list>
 #include <memory>
-#include <mutex>
+#include "port/port.h"
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -209,7 +209,7 @@ class ThreadStatusUpdater {
   }
 
   // The mutex that protects cf_info_map and db_key_map.
-  std::mutex thread_list_mutex_;
+  photon_std::mutex thread_list_mutex_;
 
   // The current status data of all active threads.
   std::unordered_set<ThreadStatusData*> thread_data_set_;

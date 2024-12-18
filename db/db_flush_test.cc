@@ -143,20 +143,20 @@ TEST_F(DBFlushTest, FlushInLowPriThreadPool) {
   Reopen(options);
   env_->SetBackgroundThreads(0, Env::HIGH);
 
-  std::thread::id tid;
+  photon_std::thread::id tid;
   int num_flushes = 0, num_compactions = 0;
   SyncPoint::GetInstance()->SetCallBack(
       "DBImpl::BGWorkFlush", [&](void* /*arg*/) {
-        if (tid == std::thread::id()) {
-          tid = std::this_thread::get_id();
+        if (tid == photon_std::thread::id()) {
+          tid = photon_std::this_thread::get_id();
         } else {
-          ASSERT_EQ(tid, std::this_thread::get_id());
+          ASSERT_EQ(tid, photon_std::this_thread::get_id());
         }
         ++num_flushes;
       });
   SyncPoint::GetInstance()->SetCallBack(
       "DBImpl::BGWorkCompaction", [&](void* /*arg*/) {
-        ASSERT_EQ(tid, std::this_thread::get_id());
+        ASSERT_EQ(tid, photon_std::this_thread::get_id());
         ++num_compactions;
       });
   SyncPoint::GetInstance()->EnableProcessing();

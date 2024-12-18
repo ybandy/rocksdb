@@ -694,9 +694,9 @@ void WritePreparedTxnDB::AdvanceSeqByOne() {
   WriteOptions woptions;
   TransactionOptions txn_options;
   Transaction* txn0 = BeginTransaction(woptions, txn_options, nullptr);
-  std::hash<std::thread::id> hasher;
+  std::hash<photon_std::thread::id> hasher;
   char name[64];
-  snprintf(name, 64, "txn%" ROCKSDB_PRIszt, hasher(std::this_thread::get_id()));
+  snprintf(name, 64, "txn%" ROCKSDB_PRIszt, hasher(photon_std::this_thread::get_id()));
   assert(strlen(name) < 64 - 1);
   Status s = txn0->SetName(name);
   assert(s.ok());

@@ -3622,7 +3622,7 @@ TEST_F(DBTest2, MultiDBParallelOpenTest) {
   }
 
   // Verify empty DBs can be created in parallel
-  std::vector<std::thread> open_threads;
+  std::vector<photon_std::thread> open_threads;
   std::vector<DB*> dbs{static_cast<unsigned int>(kNumDbs), nullptr};
   options.create_if_missing = true;
   for (int i = 0; i < kNumDbs; ++i) {

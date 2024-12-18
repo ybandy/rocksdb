@@ -20,7 +20,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <string>
-#include <thread>
+#include "port/port.h"
 #include <vector>
 
 #if defined(OS_LINUX)
@@ -281,7 +281,7 @@ void RunSecondary() {
   ropts.verify_checksums = true;
   ropts.total_order_seek = true;
 
-  std::vector<std::thread> test_threads;
+  std::vector<photon_std::thread> test_threads;
   test_threads.emplace_back([&]() {
     while (1 == ShouldSecondaryWait().load(std::memory_order_relaxed)) {
       std::unique_ptr<Iterator> iter(db->NewIterator(ropts));
@@ -330,7 +330,7 @@ void RunSecondary() {
         }
       }
     }
-    std::this_thread::sleep_for(std::chrono::seconds(1));
+    photon_std::this_thread::sleep_for(std::chrono::seconds(1));
   }
   s = db->TryCatchUpWithPrimary();
   if (!s.ok()) {
